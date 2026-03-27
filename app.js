@@ -18,7 +18,7 @@ const State = {
   searchQuery: '',
   currentProduct: null,
   currentImgIndex: 0,
-  apiBase: 'https://bot-apiv2-production-0da7.up.railway.app',
+  apiBase: 'https://bot-apiv2-production.up.railway.app',
   _promoData: null,
 };
 
