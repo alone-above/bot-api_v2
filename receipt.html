@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Чек — Alone Above Shop</title>
+<style>
+:root{--primary:#78E700;--bg:#0d0d0d;--bg2:#161616;--bg3:#1e1e1e;--border:rgba(255,255,255,0.08);--text:#f0f0f0;--text2:#888;--text3:#555}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.receipt{background:var(--bg2);border:1px solid var(--border);border-radius:20px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.receipt__header{background:linear-gradient(135deg,#0d0d0d,#1a1a1a);padding:28px 24px 20px;text-align:center;border-bottom:1px solid var(--border)}
+.receipt__logo{width:52px;height:52px;border-radius:14px;margin:0 auto 12px;display:block}
+.receipt__shop-name{font-size:18px;font-weight:700;letter-spacing:.5px;margin-bottom:4px}
+.receipt__tagline{font-size:12px;color:var(--text2)}
+.receipt__status{display:inline-flex;align-items:center;gap:6px;background:rgba(120,231,0,.12);border:1px solid rgba(120,231,0,.3);color:var(--primary);font-size:13px;font-weight:600;padding:6px 14px;border-radius:20px;margin-top:14px}
+.receipt__body{padding:20px 24px}
+.receipt__section{margin-bottom:18px}
+.receipt__section-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.receipt__row{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:12px}
+.receipt__row:last-child{border-bottom:none}
+.receipt__row-label{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);flex-shrink:0}
+.receipt__row-value{font-size:13px;font-weight:500;text-align:right;word-break:break-all}
+.receipt__row-value.mono{font-family:'Courier New',monospace;font-size:11px;color:var(--text2)}
+.receipt__items{background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:18px}
+.receipt__item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.receipt__item:last-child{border-bottom:none}
+.receipt__item-icon{width:36px;height:36px;background:rgba(120,231,0,.1);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.receipt__item-icon img{width:20px;height:20px;opacity:.8}
+.receipt__item-info{flex:1;min-width:0}
+.receipt__item-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.receipt__item-meta{font-size:11px;color:var(--text2);margin-top:2px}
+.receipt__item-price{font-size:14px;font-weight:700;color:var(--primary);flex-shrink:0}
+.receipt__total{background:linear-gradient(135deg,rgba(120,231,0,.1),rgba(78,150,0,.05));border:1px solid rgba(120,231,0,.2);border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.receipt__total-label{font-size:14px;font-weight:600;color:var(--text2)}
+.receipt__total-amount{font-size:22px;font-weight:800;color:var(--primary)}
+.receipt__sig{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:18px}
+.receipt__sig-title{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.receipt__sig-value{font-family:'Courier New',monospace;font-size:11px;color:var(--text2);word-break:break-all;line-height:1.6}
+.receipt__footer{padding:16px 24px;border-top:1px solid var(--border);text-align:center}
+.receipt__footer-text{font-size:12px;color:var(--text3);line-height:1.6}
+.receipt__footer-brand{font-size:13px;font-weight:600;color:var(--text2);margin-top:8px}
+.divider{border:none;border-top:1px dashed var(--border);margin:4px 0}
+</style>
+</head>
+<body>
+<div class="receipt" id="receipt">
+  <div class="receipt__header">
+    <img src="assets/logo.svg" alt="logo" class="receipt__logo">
+    <div class="receipt__shop-name" id="r-shop-name">Alone Above Shop</div>
+    <div class="receipt__tagline">Официальный чек об оплате</div>
+    <div class="receipt__status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Оплата подтверждена
+    </div>
+  </div>
+
+  <div class="receipt__body">
+    <div class="receipt__section">
+      <div class="receipt__section-title">Информация о заказе</div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Заказ
+        </span>
+        <span class="receipt__row-value" id="r-order-id">—</span>
+      </div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Дата и время
+        </span>
+        <span class="receipt__row-value" id="r-datetime">—</span>
+      </div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Telegram ID
+        </span>
+        <span class="receipt__row-value mono" id="r-tg-id">—</span>
+      </div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Username
+        </span>
+        <span class="receipt__row-value" id="r-username">—</span>
+      </div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Способ оплаты
+        </span>
+        <span class="receipt__row-value" id="r-method">Kaspi Pay</span>
+      </div>
+    </div>
+
+    <div class="receipt__section">
+      <div class="receipt__section-title">Товары</div>
+      <div class="receipt__items" id="r-items">
+        <!-- filled by JS -->
+      </div>
+    </div>
+
+    <div class="receipt__total">
+      <span class="receipt__total-label">Итого оплачено</span>
+      <span class="receipt__total-amount" id="r-total">—</span>
+    </div>
+
+    <div class="receipt__sig">
+      <div class="receipt__sig-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Цифровая подпись
+      </div>
+      <div class="receipt__sig-value" id="r-sig">—</div>
+    </div>
+
+    <div class="receipt__section">
+      <div class="receipt__section-title">Сервер</div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          Время сервера
+        </span>
+        <span class="receipt__row-value mono" id="r-server-time">—</span>
+      </div>
+      <div class="receipt__row">
+        <span class="receipt__row-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Receipt ID
+        </span>
+        <span class="receipt__row-value mono" id="r-receipt-id">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="receipt__footer">
+    <div class="receipt__footer-text">Сохраните этот чек как подтверждение оплаты.<br>По вопросам: <span id="r-support">@AloneAboveSupport</span></div>
+    <div class="receipt__footer-brand">Alone Above Shop © 2025</div>
+  </div>
+</div>
+
+<script>
+// Заполняется данными из URL params или postMessage
+function fmtPrice(p) {
+  return Number(p).toLocaleString('ru-RU') + ' ₸';
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch { return s; }
+}
+function fill(data) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '—'; };
+  set('r-order-id', '#' + data.order_id);
+  set('r-datetime', fmtDate(data.created_at));
+  set('r-tg-id', data.user_id);
+  set('r-username', data.username ? '@' + data.username : 'Не указан');
+  set('r-method', data.method === 'kaspi' ? '💳 Kaspi Pay' : data.method);
+  set('r-total', fmtPrice(data.total));
+  set('r-sig', data.signature || '—');
+  set('r-server-time', fmtDate(data.server_time));
+  set('r-receipt-id', data.receipt_id || '—');
+  if (data.shop_name) set('r-shop-name', data.shop_name);
+  if (data.support) set('r-support', data.support);
+
+  const itemsEl = document.getElementById('r-items');
+  if (itemsEl && data.items && data.items.length) {
+    itemsEl.innerHTML = data.items.map(it => `
+      <div class="receipt__item">
+        <div class="receipt__item-icon"><img src="assets/shopping-cart.svg" alt=""></div>
+        <div class="receipt__item-info">
+          <div class="receipt__item-name">${it.name}</div>
+          <div class="receipt__item-meta">Размер: ${it.size} · Кол-во: ${it.qty || 1}</div>
+        </div>
+        <div class="receipt__item-price">${fmtPrice(it.price * (it.qty || 1))}</div>
+      </div>`).join('');
+  }
+}
+
+// Try URL params
+const params = new URLSearchParams(location.search);
+if (params.get('data')) {
+  try { fill(JSON.parse(atob(params.get('data')))); } catch {}
+}
+// Try postMessage from parent
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'receipt') fill(e.data.payload);
+});
+</script>
+</body>
+</html>
