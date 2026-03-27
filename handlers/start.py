@@ -126,8 +126,20 @@ async def cb_main(cb: types.CallbackQuery, state: FSMContext, bot: Bot):
         f"{ae('sparkle')} <b>{SHOP_NAME}</b>\n\n"
         f"<blockquote>{ae('down')} Выберите нужный раздел:</blockquote>"
     )
-    # Удаляем предыдущее сообщение и отправляем заново, чтобы корректно показать медиа.
-    await send_media(bot, cb.from_user.id, text, "main_menu", markup=kb_main(), old_message=cb.message)
+    markup = kb_main()
+    try:
+        if cb.message.photo or cb.message.video or cb.message.animation:
+            # Медиа-сообщение — удаляем и отправляем текстовое
+            await cb.message.delete()
+            await bot.send_message(cb.from_user.id, text, parse_mode="HTML", reply_markup=markup)
+        else:
+            await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        try:
+            await cb.message.delete()
+        except Exception:
+            pass
+        await bot.send_message(cb.from_user.id, text, parse_mode="HTML", reply_markup=markup)
     await cb.answer()
 
 

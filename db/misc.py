@@ -93,16 +93,20 @@ async def get_bot_msg_media(key: str):
 
 
 # ── Отзывы ────────────────────────────────────────────
-async def add_review(uid: int, pid: int, oid: int, rating: int, comment: str):
+async def add_review(uid: int, pid: int, oid: int, rating: int, comment: str, photo_file_id: str = ""):
     await db_run(
-        "INSERT INTO reviews(user_id,product_id,order_id,rating,comment,created_at) VALUES($1,$2,$3,$4,$5,$6)",
-        (uid, pid, oid, rating, comment, datetime.now().isoformat()),
+        """INSERT INTO reviews(user_id,product_id,order_id,rating,comment,photo_file_id,created_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7)""",
+        (uid, pid, oid, rating, comment, photo_file_id, datetime.now().isoformat()),
     )
 
 
-async def get_reviews(pid: int, limit: int = 10) -> list:
+async def get_reviews(pid: int, limit: int = 20) -> list:
     return await db_all(
-        "SELECT * FROM reviews WHERE product_id=$1 ORDER BY created_at DESC LIMIT $2",
+        """SELECT r.*, u.username, u.first_name
+           FROM reviews r
+           LEFT JOIN users u ON u.user_id = r.user_id
+           WHERE r.product_id=$1 ORDER BY r.created_at DESC LIMIT $2""",
         (pid, limit),
     )
 

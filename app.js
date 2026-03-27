@@ -18,7 +18,7 @@ const State = {
   searchQuery: '',
   currentProduct: null,
   currentImgIndex: 0,
-  apiBase: 'https://bot-apiv2-production.up.railway.app/',
+  apiBase: 'https://bot-api-production-2f78.up.railway.app',
   _promoData: null,
 };
 
@@ -517,11 +517,11 @@ function renderProductDetail(p) {
         <div class="gallery-slider" id="gallery-slider" style="overflow:hidden;position:relative;background:var(--bg3);touch-action:pan-y">
           <div class="gallery-track" id="gallery-track" style="display:flex;transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);width:${galleryItems.length * 100}%">
             ${galleryItems.map((g, i) => `
-              <div style="width:${100 / galleryItems.length}%;flex-shrink:0;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:var(--bg3)">
-                <div class="gallery-slide-ph" id="gslide-${i}" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">
+              <div style="width:${100 / galleryItems.length}%;flex-shrink:0;aspect-ratio:1/1;position:relative;overflow:hidden;background:var(--bg3)">
+                <div class="gallery-slide-ph" id="gslide-${i}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
                   <img src="assets/shopping-cart.svg" style="width:48px;opacity:.2">
                 </div>
-                <img id="gimg-${i}" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0">
+                <img id="gimg-${i}" src="" alt="" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
               </div>`).join('')}
           </div>
           ${galleryItems.length > 1 ? `
@@ -765,12 +765,15 @@ async function submitOrder() {
         document.getElementById('success-order-id').textContent = `#${oid}`;
         document.getElementById('success-amount').textContent = fmtPrice(amount);
         document.getElementById('success-kaspi').textContent = kaspiPhone;
-        // Show receipt link
+        // Show receipt link — encode properly for unicode
         if (receipt) {
-          const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(receipt))));
-          const receiptUrl = `${State.apiBase}/receipt?data=${b64}`;
-          const linkEl = document.getElementById('success-receipt-link');
-          if (linkEl) { linkEl.href = receiptUrl; linkEl.style.display = 'flex'; }
+          try {
+            const json = JSON.stringify(receipt);
+            const b64 = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))));
+            const receiptUrl = `${State.apiBase}/receipt?data=${encodeURIComponent(b64)}`;
+            const linkEl = document.getElementById('success-receipt-link');
+            if (linkEl) { linkEl.href = receiptUrl; linkEl.style.display = 'flex'; }
+          } catch(e) { console.warn('receipt encode', e); }
         }
         successEl.style.display = 'flex';
       }
@@ -817,7 +820,7 @@ function renderFavorites() {
   const favProds = State.products.filter(p => State.favorites.includes(p.id));
   if (!favProds.length) {
     el.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-      <div class="empty-state__icon">❤️</div>
+      <div class="empty-state__icon"><img src="assets/cube.svg" style="width:40px;opacity:.3"></div>
       <div class="empty-state__title">Избранное пусто</div>
       <div class="empty-state__desc">Добавляйте товары в избранное, нажимая на ❤️</div>
       <button class="btn btn-primary" onclick="navigate('catalog')">Перейти в каталог</button>
@@ -825,6 +828,7 @@ function renderFavorites() {
     return;
   }
   el.innerHTML = favProds.map((p, i) => productCardHTML(p, `delay-${(i % 4) + 1}`)).join('');
+  requestAnimationFrame(() => loadGridImages(favProds));
 }
 
 // ─── Render Profile ───────────────────────────────────

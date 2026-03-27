@@ -56,6 +56,10 @@ async def _send_profile(bot: Bot, tg_user: types.User, user: dict,
     markup   = kb_profile(cnt_cart, cnt_wish)
     if edit_msg:
         try:
+            if edit_msg.photo or edit_msg.video or edit_msg.animation or edit_msg.document:
+                await edit_msg.delete()
+                await bot.send_message(tg_user.id, text, parse_mode="HTML", reply_markup=markup)
+                return
             await edit_msg.edit_text(text, parse_mode="HTML", reply_markup=markup)
             return
         except Exception:

@@ -400,19 +400,31 @@ async def cb_pay_crypto(cb: types.CallbackQuery, bot: Bot):
 @router.callback_query(F.data.startswith("check_crypto_"))
 async def cb_check_crypto(cb: types.CallbackQuery, bot: Bot):
     inv_id  = cb.data[len("check_crypto_"):]
-    inv     = await check_invoice(inv_id)
-    rec     = await __import__("db").get_crypto(inv_id)
     is_cart = False
 
+    rec = await __import__("db").get_crypto(inv_id)
     if not rec:
-        rec = await __import__("db").get_cart_crypto(inv_id)
+        rec = await get_cart_crypto(inv_id)
         is_cart = True if rec else False
 
-    if not inv or not rec:
-        await cb.answer("❌ Платёж не найден", show_alert=True)
+    if not rec:
+        await cb.answer("❌ Платёж не найден в базе", show_alert=True)
         return
+
+    # Проверяем статус в CryptoBot
+    try:
+        inv = await check_invoice(inv_id)
+    except Exception as e:
+        await cb.answer(f"❌ Ошибка проверки: {str(e)[:50]}", show_alert=True)
+        return
+
+    if not inv:
+        await cb.answer("❌ Инвойс не найден в CryptoBot", show_alert=True)
+        return
+
     if inv.get("status") != "paid":
-        await cb.answer("⏳ Оплата ещё не поступила. Повторите проверку.", show_alert=True)
+        status = inv.get("status", "unknown")
+        await cb.answer(f"⏳ Оплата не поступила (статус: {status}). Повторите позже.", show_alert=True)
         return
 
     # Оформляем покупку
@@ -604,14 +616,93 @@ async def cb_pay_kaspi(cb: types.CallbackQuery, state: FSMContext):
 
 @router.message(OrderNoteSt.entering)
 async def proc_order_note(msg: types.Message, state: FSMContext, bot: Bot):
-    d          = await state.get_data()
-    pid        = d["kaspi_pid"]
-    size       = d["kaspi_size"]
-    price      = d["kaspi_price"]
+    d    = await state.get_data()
+    note = msg.text.strip() if msg.text and msg.text.strip() != "—" else ""
+
+    # ── Корзина через Kaspi ───────────────────────────
+    if d.get("kaspi_cart"):
+        items      = d.get("kaspi_cart_items", [])
+        promo_code = d.get("kaspi_promo", "")
+        discount   = d.get("kaspi_discount", 0)
+        await state.clear()
+
+        if not items:
+            await msg.answer("Корзина пуста.", reply_markup=kb_main())
+            return
+
+        user = await get_user(msg.from_user.id)
+        uname = f"@{msg.from_user.username}" if msg.from_user.username else str(msg.from_user.id)
+        total = sum(i["price"] for i in items)
+        total_after = max(total - discount, 0)
+
+        orders = []
+        for item in items:
+            oid = await create_order(
+                msg.from_user.id,
+                user["username"] if user else "",
+                user["first_name"] if user else "",
+                item["product_id"], item["size"], item["price"],
+                "kaspi",
+                user["phone"] if user else "",
+                user["default_address"] if user else "",
+                promo_code, 0,
+            )
+            if oid:
+                orders.append(oid)
+
+        if not orders:
+            await msg.answer("Ошибка при создании заказов.", reply_markup=kb_main())
+            return
+
+        # Сохраняем kaspi запись для первого заказа
+        kid = await save_kaspi(
+            msg.from_user.id, items[0]["product_id"], items[0]["size"],
+            total_after, promo_code, discount, note
+        )
+
+        prod_lines = []
+        for item in items:
+            p = await get_product(item["product_id"])
+            prod_lines.append(f"  • {p['name'] if p else '—'} ({item['size']})")
+
+        notif = (
+            f"{ae('bell')} <b>Новый заказ (Kaspi, корзина)</b>\n\n"
+            f"{ae('user')} {uname} ({msg.from_user.first_name})\n"
+            f"🆔 <code>{msg.from_user.id}</code>\n"
+            f"{ae('box')} {len(items)} позиций:\n" + "\n".join(prod_lines) + "\n"
+            f"{ae('money')} {fmt_price(total_after)}\n"
+            f"📝 {note or '—'}\n\n"
+            f"<blockquote>Подтвердите оплату:</blockquote>"
+        )
+        mgr_markup = kb(
+            [btn("✅ Подтвердить оплату", f"kaspi_confirm_{kid}_{orders[0]}", icon="ok")],
+            [btn("❌ Отклонить",          f"kaspi_reject_{kid}_{orders[0]}",  icon="no")],
+        )
+        try:
+            sent = await bot.send_message(MANAGER_ID, notif, parse_mode="HTML", reply_markup=mgr_markup)
+            await set_kaspi_status(kid, "pending", sent.message_id)
+        except Exception:
+            pass
+
+        await msg.answer(
+            f"{ae('ok')} <b>Заказы приняты!</b>\n\n"
+            f"<blockquote>Менеджер проверит оплату и подтвердит заказ.</blockquote>",
+            parse_mode="HTML",
+            reply_markup=kb_main(),
+        )
+        return
+
+    # ── Одиночный товар через Kaspi ───────────────────
+    pid        = d.get("kaspi_pid")
+    size       = d.get("kaspi_size")
+    price      = d.get("kaspi_price")
     discount   = d.get("kaspi_discount", 0)
     promo_code = d.get("kaspi_promo", "")
-    note       = msg.text.strip() if msg.text.strip() != "—" else ""
     await state.clear()
+
+    if not pid:
+        await msg.answer("Сессия истекла. Начните заново.", reply_markup=kb_main())
+        return
 
     p    = await get_product(pid)
     user = await get_user(msg.from_user.id)
@@ -687,12 +778,17 @@ async def cb_kaspi_confirm(cb: types.CallbackQuery, bot: Bot):
             await use_promo(rec["user_id"], promo["id"], oid)
 
     try:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        review_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⭐ Оставить отзыв", callback_data=f"leave_review_{rec['product_id']}_{oid}")
+        ]])
         await bot.send_message(
             rec["user_id"],
             f"{ae('confetti')} <b>Оплата подтверждена!</b>\n\n"
             f"<blockquote>Заказ <b>#{oid}</b> оформлен.\n"
             f"Бонус: <b>{fmt_price(bonus)}</b> начислен на счёт.</blockquote>",
             parse_mode="HTML",
+            reply_markup=review_kb,
         )
     except Exception:
         pass

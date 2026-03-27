@@ -51,15 +51,21 @@ class AdminSt(StatesGroup):
     broadcast          = State()
     set_media_file     = State()
     add_cat_name       = State()
-    add_prod_name      = State()
-    add_prod_desc      = State()
-    add_prod_price     = State()
-    add_prod_sizes     = State()
-    add_prod_stock     = State()
-    add_prod_seller_ph = State()
-    add_prod_seller_un = State()
-    add_prod_card      = State()
-    add_prod_gallery   = State()
+    add_prod_name       = State()
+    add_prod_desc       = State()
+    add_prod_price      = State()
+    add_prod_orig_price = State()
+    add_prod_discount   = State()
+    add_prod_sizes      = State()
+    add_prod_stock      = State()
+    add_prod_delivery   = State()
+    add_prod_warranty   = State()
+    add_prod_return     = State()
+    add_prod_seller_ph  = State()
+    add_prod_seller_un  = State()
+    add_prod_seller_av  = State()
+    add_prod_card       = State()
+    add_prod_gallery    = State()
     add_drop_name      = State()
     add_drop_desc      = State()
     add_drop_price     = State()
@@ -421,15 +427,26 @@ async def cb_vprod(cb: types.CallbackQuery):
         await cb.answer("Товар не найден", show_alert=True)
         return
     sizes = parse_sizes(p)
+    import json as _json
+    try:
+        gal = _json.loads(p.get("gallery") or "[]")
+    except Exception:
+        gal = []
+    orig_price_txt = f'\n{ae("tag")} <b>Цена до скидки:</b> {fmt_price(p["original_price"])}' if p.get("original_price") else ""
+    disc_txt       = f'  <b>(-{int(p["discount_percent"])}%)</b>' if p.get("discount_percent") else ""
     text = (
         f'{ae("box")} <b>{p["name"]}</b>\n\n'
         f'{p["description"]}\n\n'
         f"━━━━━━━━━━━━━━━━━\n"
-        f'{ae("money")} <b>Цена:</b> {fmt_price(p["price"])}\n'
+        f'{ae("money")} <b>Цена:</b> {fmt_price(p["price"])}{disc_txt}{orig_price_txt}\n'
         f'{ae("size")} <b>Размеры:</b> {", ".join(sizes) or "—"}\n'
         f'{ae("box")} <b>Остаток:</b> {p["stock"]} шт.\n'
+        f'🚚 <b>Доставка:</b> {p.get("delivery_days") or "3–7"} дн.\n'
+        f'🛡 <b>Гарантия:</b> {p.get("warranty_days") or 14} дн.\n'
+        f'🔄 <b>Возврат:</b> {p.get("return_days") or 14} дн.\n'
         f'{ae("phone")} <b>Тел. продавца:</b> {p["seller_phone"] or "—"}\n'
         f'💬 <b>TG продавца:</b> {"@" + p["seller_username"] if p["seller_username"] else "—"}\n'
+        f'📸 <b>Галерея:</b> {len(gal)} фото\n'
         f"━━━━━━━━━━━━━━━━━"
     )
     markup = kb(
@@ -444,13 +461,18 @@ async def cb_vprod(cb: types.CallbackQuery):
 
 
 EDIT_FIELD_LABELS = {
-    "name":            ("📛 Название",     "Введите новое название:"),
-    "description":     ("📝 Описание",     "Введите новое описание:"),
-    "price":           ("💰 Цена",         "Введите новую цену в ₸:"),
-    "stock":           ("📊 Остаток",      "Введите количество на складе:"),
-    "sizes":           ("📐 Размеры",      "Введите размеры через запятую (или «нет»):"),
-    "seller_phone":    ("📞 Телефон",      "Введите номер телефона продавца:"),
-    "seller_username": ("💬 TG username",  "Введите @username продавца (или «нет»):"),
+    "name":             ("📛 Название",          "Введите новое название:"),
+    "description":      ("📝 Описание",          "Введите новое описание:"),
+    "price":            ("💰 Цена",              "Введите новую цену в ₸:"),
+    "original_price":   ("🏷 Цена до скидки",   "Введите цену до скидки (или 0):"),
+    "discount_percent": ("🎁 Скидка %",          "Введите процент скидки (или 0):"),
+    "stock":            ("📊 Остаток",           "Введите количество на складе:"),
+    "sizes":            ("📐 Размеры",           "Введите размеры через запятую (или «нет»):"),
+    "delivery_days":    ("🚚 Срок доставки",     "Введите срок доставки (например: 3–7 дней):"),
+    "warranty_days":    ("🛡 Гарантия (дней)",   "Введите число дней гарантии:"),
+    "return_days":      ("🔄 Возврат (дней)",    "Введите число дней на возврат:"),
+    "seller_phone":     ("📞 Телефон",           "Введите номер телефона продавца (или «нет»):"),
+    "seller_username":  ("💬 TG username",       "Введите @username продавца (или «нет»):"),
 }
 
 
@@ -464,14 +486,19 @@ async def cb_editprod(cb: types.CallbackQuery):
         await cb.answer("Товар не найден", show_alert=True)
         return
     markup = kb(
-        [btn("Название",   f"epf_{pid}_name",            icon="edit"),
-         btn("Описание",   f"epf_{pid}_description",     icon="edit")],
-        [btn("Цена",       f"epf_{pid}_price",            icon="money"),
-         btn("Остаток",    f"epf_{pid}_stock",            icon="box")],
-        [btn("Размеры",    f"epf_{pid}_sizes",            icon="size"),
-         btn("Тел.",       f"epf_{pid}_seller_phone",     icon="phone")],
-        [btn("TG продавца", f"epf_{pid}_seller_username", icon="chat")],
-        [btn("Назад",       f"vprod_{pid}",               icon="back")],
+        [btn("Название",        f"epf_{pid}_name",             icon="edit"),
+         btn("Описание",        f"epf_{pid}_description",      icon="edit")],
+        [btn("Цена",            f"epf_{pid}_price",             icon="money"),
+         btn("Цена до скидки",  f"epf_{pid}_original_price",   icon="tag")],
+        [btn("Скидка %",        f"epf_{pid}_discount_percent",  icon="gift"),
+         btn("Остаток",         f"epf_{pid}_stock",             icon="box")],
+        [btn("Доставка",        f"epf_{pid}_delivery_days",     icon="truck"),
+         btn("Гарантия (дн.)",  f"epf_{pid}_warranty_days",     icon="shield")],
+        [btn("Возврат (дн.)",   f"epf_{pid}_return_days",       icon="refresh"),
+         btn("Размеры",         f"epf_{pid}_sizes",             icon="size")],
+        [btn("Тел. продавца",   f"epf_{pid}_seller_phone",      icon="phone"),
+         btn("TG продавца",     f"epf_{pid}_seller_username",   icon="chat")],
+        [btn("Назад",           f"vprod_{pid}",                 icon="back")],
     )
     try:
         await cb.message.edit_text(
@@ -557,7 +584,7 @@ async def cb_dprod(cb: types.CallbackQuery):
         pass
 
 
-# ── Добавление товара (9 шагов) ───────────────────────
+# ── Добавление товара (15 шагов) ──────────────────────
 @router.callback_query(F.data == "addprod")
 async def cb_addprod(cb: types.CallbackQuery, state: FSMContext):
     if not admin_guard(cb.from_user.id):
@@ -574,7 +601,7 @@ async def cb_addprod(cb: types.CallbackQuery, state: FSMContext):
     try:
         await cb.message.edit_text(
             f'{ae("box")} <b>Новый товар</b>\n\n'
-            f'<blockquote>Шаг 1/9 — Выберите категорию:</blockquote>',
+            f'<blockquote>Шаг 1/15 — Выберите категорию:</blockquote>',
             parse_mode="HTML", reply_markup=kb(*rows),
         )
     except Exception:
@@ -592,7 +619,7 @@ async def cb_npcat(cb: types.CallbackQuery, state: FSMContext):
     await state.set_state(AdminSt.add_prod_name)
     try:
         await cb.message.edit_text(
-            f'{ae("box")} <b>Шаг 2/9 — Название товара</b>\n\n'
+            f'{ae("box")} <b>Шаг 2/15 — Название товара</b>\n\n'
             f'<blockquote>Введите название:</blockquote>',
             parse_mode="HTML", reply_markup=kb_back("addprod"),
         )
@@ -607,8 +634,8 @@ async def proc_prod_name(msg: types.Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(AdminSt.add_prod_desc)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 3/9 — Описание товара</b>\n\n'
-        f'<blockquote>Введите описание:</blockquote>',
+        f'{ae("box")} <b>Шаг 3/15 — Описание товара</b>\n\n'
+        f'<blockquote>Введите описание (поддерживается HTML):</blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
     )
 
@@ -619,8 +646,8 @@ async def proc_prod_desc(msg: types.Message, state: FSMContext):
     await state.update_data(desc=desc)
     await state.set_state(AdminSt.add_prod_price)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 4/9 — Цена в тенге ₸</b>\n\n'
-        f'<blockquote>Введите цену (например: 5000):</blockquote>',
+        f'{ae("box")} <b>Шаг 4/15 — Цена в тенге ₸</b>\n\n'
+        f'<blockquote>Введите актуальную цену продажи (например: 5000):</blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
     )
 
@@ -633,9 +660,51 @@ async def proc_prod_price(msg: types.Message, state: FSMContext):
         await msg.answer("❌ Введите число, например: <code>5000</code>", parse_mode="HTML")
         return
     await state.update_data(price=price)
+    await state.set_state(AdminSt.add_prod_orig_price)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 5/15 — Цена до скидки (зачёркнутая)</b>\n\n'
+        f'<blockquote>Введите оригинальную цену (до скидки), например: 7000\n'
+        f'Напишите <b>нет</b> если скидки нет.</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_orig_price)
+async def proc_prod_orig_price(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip()
+    if raw.lower() in ("нет", "no", "-", "—"):
+        orig = 0.0
+    else:
+        try:
+            orig = float(raw.replace(",", ".").replace(" ", ""))
+        except ValueError:
+            await msg.answer("❌ Введите число или напишите <b>нет</b>.", parse_mode="HTML")
+            return
+    await state.update_data(orig_price=orig)
+    await state.set_state(AdminSt.add_prod_discount)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 6/15 — Скидка %</b>\n\n'
+        f'<blockquote>Введите процент скидки, например: 15\n'
+        f'Напишите <b>0</b> или <b>нет</b> если скидки нет.</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_discount)
+async def proc_prod_discount(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip()
+    if raw.lower() in ("нет", "no", "-", "—"):
+        disc = 0.0
+    else:
+        try:
+            disc = float(raw.replace(",", ".").replace("%", ""))
+        except ValueError:
+            await msg.answer("❌ Введите число, например: <code>15</code>", parse_mode="HTML")
+            return
+    await state.update_data(discount=disc)
     await state.set_state(AdminSt.add_prod_sizes)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 5/9 — Размеры</b>\n\n'
+        f'{ae("box")} <b>Шаг 7/15 — Размеры</b>\n\n'
         f'<blockquote>Через запятую: S, M, L, XL\n'
         f'Нет размеров — напишите <b>нет</b></blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
@@ -650,7 +719,7 @@ async def proc_prod_sizes(msg: types.Message, state: FSMContext):
     await state.update_data(sizes=sizes_list)
     await state.set_state(AdminSt.add_prod_stock)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 6/9 — Остаток на складе</b>\n\n'
+        f'{ae("box")} <b>Шаг 8/15 — Остаток на складе</b>\n\n'
         f'<blockquote>Введите количество (например: 10):</blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
     )
@@ -664,10 +733,66 @@ async def proc_prod_stock(msg: types.Message, state: FSMContext):
         await msg.answer("❌ Введите целое число.")
         return
     await state.update_data(stock=stock)
+    await state.set_state(AdminSt.add_prod_delivery)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 9/15 — Срок доставки</b>\n\n'
+        f'<blockquote>Введите срок доставки, например: <b>3–7 дней</b>\n'
+        f'Или напишите <b>нет</b> для значения по умолчанию (3–7 дней)</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_delivery)
+async def proc_prod_delivery(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip()
+    delivery = "3–7" if raw.lower() in ("нет", "no", "-", "—") else raw
+    await state.update_data(delivery_days=delivery)
+    await state.set_state(AdminSt.add_prod_warranty)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 10/15 — Гарантия (дней)</b>\n\n'
+        f'<blockquote>Введите количество дней гарантии, например: <b>14</b>\n'
+        f'Напишите <b>нет</b> для значения по умолчанию (14 дней)</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_warranty)
+async def proc_prod_warranty(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip()
+    if raw.lower() in ("нет", "no", "-", "—"):
+        warranty = 14
+    else:
+        try:
+            warranty = int(raw)
+        except ValueError:
+            await msg.answer("❌ Введите число дней, например: <code>14</code>", parse_mode="HTML")
+            return
+    await state.update_data(warranty_days=warranty)
+    await state.set_state(AdminSt.add_prod_return)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 11/15 — Срок возврата (дней)</b>\n\n'
+        f'<blockquote>Введите количество дней на возврат, например: <b>14</b>\n'
+        f'Напишите <b>нет</b> для значения по умолчанию (14 дней)</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_return)
+async def proc_prod_return(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip()
+    if raw.lower() in ("нет", "no", "-", "—"):
+        ret = 14
+    else:
+        try:
+            ret = int(raw)
+        except ValueError:
+            await msg.answer("❌ Введите число дней, например: <code>14</code>", parse_mode="HTML")
+            return
+    await state.update_data(return_days=ret)
     await state.set_state(AdminSt.add_prod_seller_ph)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 7/9 — Телефон продавца</b>\n\n'
-        f'<blockquote>Пример: +7 701 234 56 78\nНапишите <b>нет</b> если нет.</blockquote>',
+        f'{ae("box")} <b>Шаг 12/15 — Телефон продавца</b>\n\n'
+        f'<blockquote>Пример: +7 701 234 56 78\nНапишите <b>нет</b> если официальный магазин.</blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
     )
 
@@ -678,21 +803,49 @@ async def proc_prod_seller_ph(msg: types.Message, state: FSMContext):
     await state.update_data(seller_phone=phone)
     await state.set_state(AdminSt.add_prod_seller_un)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 8/9 — Telegram продавца</b>\n\n'
-        f'<blockquote>Введите @username или напишите <b>нет</b>:</blockquote>',
+        f'{ae("box")} <b>Шаг 13/15 — Telegram продавца</b>\n\n'
+        f'<blockquote>Введите @username или напишите <b>нет</b> (для официального магазина):</blockquote>',
         parse_mode="HTML", reply_markup=kb_back("addprod"),
     )
 
 
 @router.message(AdminSt.add_prod_seller_un)
 async def proc_prod_seller_un(msg: types.Message, state: FSMContext):
-    raw  = msg.text.strip()
-    un   = "" if raw.lower() in ("нет", "no", "-", "—") else raw.lstrip("@")
+    raw = msg.text.strip()
+    un = "" if raw.lower() in ("нет", "no", "-", "—") else raw.lstrip("@")
     await state.update_data(seller_un=un)
+    await state.set_state(AdminSt.add_prod_seller_av)
+    await msg.answer(
+        f'{ae("box")} <b>Шаг 14/15 — Аватар продавца</b>\n\n'
+        f'<blockquote>Отправьте фото аватара продавца.\n'
+        f'Если продавец — официальный магазин, напишите <b>нет</b>\n'
+        f'(будет использован логотип магазина)</blockquote>',
+        parse_mode="HTML", reply_markup=kb_back("addprod"),
+    )
+
+
+@router.message(AdminSt.add_prod_seller_av, F.photo)
+async def proc_prod_seller_av_photo(msg: types.Message, state: FSMContext):
+    fid = msg.photo[-1].file_id
+    await state.update_data(seller_av_fid=fid)
+    await _ask_prod_card(msg, state)
+
+
+@router.message(AdminSt.add_prod_seller_av, F.text)
+async def proc_prod_seller_av_skip(msg: types.Message, state: FSMContext):
+    if msg.text.strip().lower() in ("нет", "no", "-", "—"):
+        await state.update_data(seller_av_fid="")
+        await _ask_prod_card(msg, state)
+    else:
+        await msg.answer("⚠️ Отправьте фото или напишите «нет».")
+
+
+async def _ask_prod_card(msg: types.Message, state: FSMContext):
     await state.set_state(AdminSt.add_prod_card)
     await msg.answer(
-        f'{ae("box")} <b>Шаг 9/9 — Обложка товара</b>\n\n'
-        f'<blockquote>Отправьте фото/видео или напишите <b>нет</b>.</blockquote>',
+        f'{ae("box")} <b>Шаг 15/15 — Обложка товара (карточка)</b>\n\n'
+        f'<blockquote>Отправьте главное фото/видео товара.\n'
+        f'Напишите <b>нет</b> если нет обложки.</blockquote>',
         parse_mode="HTML",
     )
 
@@ -704,35 +857,83 @@ async def proc_prod_card_media(msg: types.Message, state: FSMContext):
     else:
         fid, mt = msg.video.file_id, "video"
     await state.update_data(card_fid=fid, card_mt=mt)
-    await _finish_add_product(msg, state)
+    await _ask_gallery(msg, state)
 
 
 @router.message(AdminSt.add_prod_card, F.text)
 async def proc_prod_card_skip(msg: types.Message, state: FSMContext):
     if msg.text.strip().lower() in ("нет", "no", "-"):
         await state.update_data(card_fid="", card_mt="")
-        await _finish_add_product(msg, state)
+        await _ask_gallery(msg, state)
     else:
         await msg.answer("⚠️ Отправьте фото/видео или напишите «нет».")
+
+
+async def _ask_gallery(msg: types.Message, state: FSMContext):
+    await state.set_state(AdminSt.add_prod_gallery)
+    await state.update_data(gallery=[])
+    await msg.answer(
+        f'{ae("box")} <b>Галерея товара</b>\n\n'
+        f'<blockquote>Отправляйте фото по одному — они добавятся в галерею.\n'
+        f'Когда закончите — напишите <b>готово</b>.\n'
+        f'Чтобы пропустить — напишите <b>нет</b>.</blockquote>',
+        parse_mode="HTML",
+    )
+
+
+@router.message(AdminSt.add_prod_gallery, F.photo)
+async def proc_gallery_photo(msg: types.Message, state: FSMContext):
+    d = await state.get_data()
+    gallery = d.get("gallery", [])
+    gallery.append({"file_id": msg.photo[-1].file_id, "media_type": "photo"})
+    await state.update_data(gallery=gallery)
+    await msg.answer(
+        f'✅ Фото #{len(gallery)} добавлено в галерею.\n'
+        f'Отправьте ещё фото или напишите <b>готово</b>.',
+        parse_mode="HTML",
+    )
+
+
+@router.message(AdminSt.add_prod_gallery, F.text)
+async def proc_gallery_done(msg: types.Message, state: FSMContext):
+    raw = msg.text.strip().lower()
+    if raw in ("готово", "done", "ready", "нет", "no", "-"):
+        await _finish_add_product(msg, state)
+    else:
+        await msg.answer("⚠️ Отправьте фото или напишите «готово».")
 
 
 async def _finish_add_product(msg: types.Message, state: FSMContext):
     d = await state.get_data()
     await state.clear()
+    gallery_raw = d.get("gallery", [])
+    # Save gallery as list of file_ids for API
+    gallery_fids = [g["file_id"] for g in gallery_raw if g.get("file_id")]
+
     pid = await add_product(
         d["cid"], d["name"], d["desc"], d["price"],
         d.get("sizes", []), d["stock"],
         d.get("seller_un", ""), d.get("seller_phone", ""),
+        d.get("seller_av_fid", ""),
+        d.get("delivery_days", "3–7"),
+        d.get("warranty_days", 14),
+        d.get("return_days", 14),
+        d.get("orig_price", 0),
+        d.get("discount", 0),
         d.get("card_fid", ""), d.get("card_mt", ""),
+        gallery_fids,
     )
+    disc_txt = f' | Скидка: {int(d.get("discount", 0))}%' if d.get("discount") else ""
+    orig_txt = f'\n{ae("tag")} Цена до скидки: {fmt_price(d["orig_price"])}' if d.get("orig_price") else ""
     await msg.answer(
         f'{ae("ok")} <b>Товар добавлен!</b>\n\n'
         f'{ae("box")} {d["name"]}\n'
-        f'{ae("money")} {fmt_price(d["price"])}',
+        f'{ae("money")} {fmt_price(d["price"])}{disc_txt}{orig_txt}\n'
+        f'📸 Фото галереи: {len(gallery_raw)} шт.\n'
+        f'🚚 Доставка: {d.get("delivery_days", "3–7")} | 🛡 Гарантия: {d.get("warranty_days", 14)} дн. | 🔄 Возврат: {d.get("return_days", 14)} дн.',
         parse_mode="HTML",
         reply_markup=kb_admin_back(),
     )
-
 
 # ════════════════════════════════════════════════════
 #  Заказы
