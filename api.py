@@ -2,24 +2,21 @@
 api.py — FastAPI для мини-аппа
 """
 import os
-import hashlib
-import hmac
-import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from datetime import datetime, timezone
+import asyncio
+from datetime import datetime
 
 from db.catalog import get_categories, get_products, get_product
 from db.cart import cart_get, wish_get
 from db.users import get_user
 from db.orders import create_order, get_user_orders
-from db.misc import get_reviews, add_review, get_avg_rating, get_review_count
-from db.promos import get_promo_by_code, check_promo_usage, apply_promo_to_price, validate_promo
-from config import SHOP_NAME, SUPPORT_USERNAME, KASPI_PHONE, MANAGER_ID, BOT_TOKEN
+from config import SHOP_NAME, SUPPORT_USERNAME, KASPI_PHONE, MANAGER_ID
 from aiogram import Bot
 from db.pool import db_run
+from datetime import datetime
 
 app = FastAPI(title="ShopBot API", description="API для мини-аппа магазина")
 
@@ -130,33 +127,6 @@ async def get_single_product(product_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Галерея товара
-@app.get("/products/{product_id}/gallery")
-async def get_product_gallery(product_id: int):
-    try:
-        product = await get_product(product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        import json
-        gallery = []
-        try:
-            gallery = json.loads(product.get("gallery") or "[]")
-        except Exception:
-            pass
-        # Include card as first image if exists
-        card_fid = product.get("card_file_id", "")
-        card_mt  = product.get("card_media_type", "photo")
-        return {
-            "gallery": gallery,
-            "card_file_id": card_fid,
-            "card_media_type": card_mt,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 # Корзина
 @app.get("/cart/{user_id}")
 async def get_user_cart(user_id: int):
@@ -232,25 +202,6 @@ async def get_support_info():
         "phone": KASPI_PHONE
     }
 
-# Проверка промокода
-@app.post("/promo/check")
-async def check_promo(req: dict):
-    code = (req.get("code") or "").strip().upper()
-    user_id = req.get("user_id", 0)
-    if not code:
-        return {"valid": False, "error": "Введите промокод"}
-    promo, err = await validate_promo(code, user_id)
-    if not promo:
-        return {"valid": False, "error": err}
-    from db.promos import apply_promo_to_price as _apply
-    # Calculate on dummy price to show discount info
-    return {
-        "valid": True,
-        "promo_type": promo["promo_type"],
-        "value": promo["value"],
-        "description": promo["description"],
-    }
-
 # ══════════════════════════════════════════════
 # ЗАКАЗЫ
 # ══════════════════════════════════════════════
@@ -258,7 +209,6 @@ async def check_promo(req: dict):
 class OrderItem(BaseModel):
     product_id: int
     size: str
-    qty: int = 1
 
 class OrderRequest(BaseModel):
     items: list[OrderItem]
@@ -270,177 +220,116 @@ class OrderRequest(BaseModel):
 
 @app.post("/order/create")
 async def create_order_handler(order: OrderRequest):
+    """
+    Создание заказа из корзины и отправка уведомления менеджеру с inline кнопками
+    """
     try:
         if not order.items:
             return {"success": False, "error": "Корзина пуста"}
-
+        
+        # Используем реальный user_id из Telegram или fallback
         user_id = order.user_id or 999999
+        
+        # Для простоты берём первый товар из корзины
+        first_item = order.items[0]
+        product = await get_product(first_item.product_id)
+        
+        if not product:
+            return {"success": False, "error": "Товар не найден"}
+        
         user = await get_user(user_id)
-
+        
+        # Создаём пользователя если не существует
         if not user:
             await db_run(
                 """INSERT INTO users(user_id, username, first_name, registered_at)
                    VALUES($1, $2, $3, $4)
                    ON CONFLICT(user_id) DO UPDATE SET username=$2, first_name=$3""",
-                (user_id, "webappuser", "WebApp User", datetime.now(timezone.utc).isoformat()),
+                (user_id, "webappuser", "WebApp User", datetime.now().isoformat()),
             )
-            user = {"username": "", "first_name": "WebApp", "phone": "", "default_address": ""}
-
-        # Validate promo
+        
+        price = product.get("price", 0)
         discount = 0
-        promo_info_text = ""
-        promo_obj = None
-        if order.promo_code:
-            promo_obj, err = await validate_promo(order.promo_code, user_id)
-            if not promo_obj:
-                return {"success": False, "error": err}
-
-        # Build order items with prices
-        order_items = []
-        total = 0
-        for item in order.items:
-            product = await get_product(item.product_id)
-            if not product:
-                return {"success": False, "error": f"Товар {item.product_id} не найден"}
-            qty = getattr(item, 'qty', 1) or 1
-            line_price = product["price"] * qty
-            total += line_price
-            order_items.append({
-                "product_id": item.product_id,
-                "name": product["name"],
-                "size": item.size,
-                "price": product["price"],
-                "qty": qty,
-            })
-
-        # Apply promo to total
-        if promo_obj:
-            total_after, discount, promo_info_text = apply_promo_to_price(total, promo_obj)
-        else:
-            total_after = total
-
-        # Create one order per item (existing schema)
-        first_item = order_items[0]
-        oid = await create_order(
+        
+        # Создаём заказ
+        order_id = await create_order(
             uid=user_id,
-            username=user.get("username", "") or "webappuser",
-            first_name=user.get("first_name", "") or "WebApp",
-            pid=first_item["product_id"],
-            size=first_item["size"],
-            price=total_after,
+            username="webappuser",
+            first_name="WebApp",
+            pid=first_item.product_id,
+            size=first_item.size,
+            price=price,
             method=order.method,
             phone=order.phone,
             address=order.address,
             promo_code=order.promo_code,
             discount=discount,
         )
-
-        if not oid:
-            return {"success": False, "error": "Ошибка при создании заказа"}
-
-        # Mark promo as used
-        if promo_obj:
-            from db.promos import use_promo
-            await use_promo(user_id, promo_obj["id"], oid)
-
-        # Build digital signature
-        server_time = datetime.now(timezone.utc).isoformat()
-        receipt_id = f"AA-{oid}-{user_id}"
-        sig_payload = f"{oid}:{user_id}:{total_after}:{server_time}"
-        signature = hmac.new(BOT_TOKEN.encode(), sig_payload.encode(), hashlib.sha256).hexdigest()[:32]
-
-        # Receipt data
-        receipt_data = {
-            "order_id": oid,
-            "receipt_id": receipt_id,
-            "user_id": user_id,
-            "username": user.get("username", ""),
-            "created_at": server_time,
-            "server_time": server_time,
-            "method": order.method,
-            "items": order_items,
-            "total": total_after,
-            "discount": discount,
-            "promo_code": order.promo_code,
-            "signature": signature,
-            "shop_name": SHOP_NAME,
-            "support": SUPPORT_USERNAME,
-        }
-
-        # Notify manager
-        items_text = "\n".join(f"  • {i['name']} ({i['size']}) x{i['qty']} — {i['price']*i['qty']:,.0f} ₸" for i in order_items)
+        
+        if not order_id:
+            return {
+                "success": False,
+                "error": "Ошибка при создании заказа"
+            }
+        
+        # Формируем уведомление менеджеру с inline кнопками
+        pname = product.get("name", "Товар")
         notif = (
-            f"🔔 <b>Новый заказ #{oid} (WebApp)</b>\n\n"
-            f"👤 ID: <code>{user_id}</code>\n"
-            f"📦 Товары:\n{items_text}\n"
-            f"💰 Итого: <b>{total_after:,.0f} ₸</b>"
-            + (f"\n🏷 Промокод: {order.promo_code} (-{discount:,.0f} ₸)" if discount else "")
-            + f"\n📞 Телефон: {order.phone}\n📍 Адрес: {order.address}\n\n"
+            f"🔔 <b>Новый заказ #{order_id} (WebApp Kaspi)</b>\n\n"
+            f"👤 <b>User ID:</b> <code>{user_id}</code>\n"
+            f"📦 <b>Товар:</b> {pname} ({first_item.size})\n"
+            f"💰 <b>Сумма:</b> {price} ₸\n"
+            f"📞 <b>Телефон:</b> {order.phone}\n"
+            f"📍 <b>Адрес:</b> {order.address}\n\n"
             f"<blockquote>⏳ Ожидается оплата через Kaspi</blockquote>"
         )
+        
+        # Создаём inline кнопки для менеджера
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        mgr_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"weborder_confirm_{oid}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"weborder_reject_{oid}"),
-        ]])
-        try:
-            await bot_instance.send_message(MANAGER_ID, notif, parse_mode="HTML", reply_markup=mgr_kb)
-        except Exception as e:
-            print(f"Manager notify error: {e}")
-
-        # Send receipt to user via bot
-        import base64
-        receipt_b64 = base64.b64encode(json.dumps(receipt_data, ensure_ascii=False).encode()).decode()
-        receipt_url = f"https://bot-api-production-2f78.up.railway.app/receipt?data={receipt_b64}"
-        receipt_msg = (
-            f"🧾 <b>Чек заказа #{oid}</b>\n\n"
-            f"💰 Сумма: <b>{total_after:,.0f} ₸</b>\n"
-            f"📲 Переведите на номер: <code>{KASPI_PHONE}</code>\n\n"
-            f"<blockquote>После оплаты менеджер подтвердит заказ.</blockquote>"
+        
+        manager_buttons = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Подтвердить оплату", callback_data=f"weborder_confirm_{order_id}"),
+                    InlineKeyboardButton(text="❌ Отклонить", callback_data=f"weborder_reject_{order_id}"),
+                ]
+            ]
         )
+        
+        # Отправляем уведомление менеджеру
         try:
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            user_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🧾 Открыть чек", url=receipt_url)
-            ]])
-            await bot_instance.send_message(user_id, receipt_msg, parse_mode="HTML", reply_markup=user_kb)
+            await bot_instance.send_message(
+                MANAGER_ID, 
+                notif, 
+                parse_mode="HTML",
+                reply_markup=manager_buttons
+            )
+            print(f"✅ Уведомление отправлено менеджеру (заказ #{order_id})")
         except Exception as e:
-            print(f"User receipt send error: {e}")
-
+            print(f"❌ Ошибка отправки уведомления менеджеру: {e}")
+        
+        # Возвращаем информацию о платеже
         return {
             "success": True,
-            "order_id": oid,
-            "receipt": receipt_data,
+            "order_id": order_id,
             "payment_info": {
                 "method": "kaspi",
                 "phone": KASPI_PHONE,
-                "amount": total_after,
-                "description": f"Заказ #{oid}",
+                "manager_contact": f"ID менеджера: {MANAGER_ID}",
+                "amount": price,
+                "description": f"Оплата заказа #{order_id}: {pname}"
             },
-            "message": f"✅ Заказ #{oid} создан!",
+            "message": f"✅ Заказ #{order_id} создан! Переведите {price} ₸ на номер {KASPI_PHONE}"
         }
-
+        
     except Exception as e:
         import traceback
+        print(f"❌ Ошибка при создании заказа: {e}")
         print(traceback.format_exc())
-        return {"success": False, "error": f"Ошибка сервера: {str(e)}"}
-
-@app.get("/receipt")
-async def serve_receipt(data: str = ""):
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "receipt.html")
-    return FileResponse(path, media_type="text/html")
-
-
-@app.get("/file-url")
-async def get_file_url(file_id: str):
-    """Получить публичный URL файла из Telegram по file_id"""
-    try:
-        file = await bot_instance.get_file(file_id)
-        url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
-        return {"url": url}
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
+        return {
+            "success": False,
+            "error": f"Ошибка сервера: {str(e)}"
+        }
 
 # Заказы пользователя
 @app.get("/orders")
@@ -482,58 +371,3 @@ async def get_user_orders_endpoint(user_id: int):
     except Exception as e:
         print(f"❌ Ошибка при получении заказов: {e}")
         return {"orders": []}
-
-
-# ══════════════════════════════════════════════
-# ОТЗЫВЫ
-# ══════════════════════════════════════════════
-
-@app.get("/products/{product_id}/reviews")
-async def get_product_reviews(product_id: int, limit: int = 20):
-    try:
-        reviews = await get_reviews(product_id, limit=limit)
-        avg = await get_avg_rating(product_id)
-        count = await get_review_count(product_id)
-        return {
-            "reviews": [
-                {
-                    "id": r.get("id"),
-                    "user_id": r.get("user_id"),
-                    "username": r.get("username") or "",
-                    "first_name": r.get("first_name") or "Покупатель",
-                    "rating": r.get("rating"),
-                    "comment": r.get("comment"),
-                    "photo_file_id": r.get("photo_file_id") or "",
-                    "created_at": r.get("created_at"),
-                }
-                for r in reviews
-            ],
-            "avg_rating": avg,
-            "count": count,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class ReviewRequest(BaseModel):
-    user_id: int
-    order_id: int = 0
-    rating: int
-    comment: str
-    photo_file_id: str = ""
-
-@app.post("/products/{product_id}/reviews")
-async def post_product_review(product_id: int, req: ReviewRequest):
-    try:
-        if not 1 <= req.rating <= 5:
-            raise HTTPException(status_code=400, detail="rating must be 1-5")
-        if not req.comment.strip():
-            raise HTTPException(status_code=400, detail="comment required")
-        if len(req.comment.strip()) < 80:
-            raise HTTPException(status_code=400, detail="Минимум 80 символов в отзыве")
-        await add_review(req.user_id, product_id, req.order_id, req.rating, req.comment.strip(), req.photo_file_id)
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

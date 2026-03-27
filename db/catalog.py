@@ -91,9 +91,7 @@ async def get_product(pid: int):
 
 async def add_product(
     cid, name, desc, price, sizes_list, stock,
-    seller_username="", seller_phone="", seller_avatar="",
-    delivery_days="3–7", warranty_days=14, return_days=14,
-    original_price=0, discount_percent=0,
+    seller_username="", seller_phone="",
     card_file_id="", card_media_type="", gallery=None,
 ):
     sizes_json   = json.dumps(sizes_list, ensure_ascii=False)
@@ -101,18 +99,14 @@ async def add_product(
     short_id     = gen_short_id()
     pid = await db_insert(
         """INSERT INTO products
-           (category_id, name, description, price, original_price, discount_percent,
-            sizes, stock,
-            seller_username, seller_phone, seller_avatar,
-            delivery_days, warranty_days, return_days,
+           (category_id, name, description, price, sizes, stock,
+            seller_username, seller_phone,
             card_file_id, card_media_type, gallery, is_active, short_id, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1,$18,$19)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,$12,$13)
            RETURNING id""",
         (
-            cid, name, desc, price, original_price or 0, discount_percent or 0,
-            sizes_json, stock,
-            seller_username, seller_phone, seller_avatar,
-            delivery_days, warranty_days, return_days,
+            cid, name, desc, price, sizes_json, stock,
+            seller_username, seller_phone,
             card_file_id, card_media_type, gallery_json,
             short_id, datetime.now().isoformat(),
         ),
@@ -123,10 +117,8 @@ async def add_product(
 
 async def update_product_field(pid: int, field: str, value):
     allowed = {
-        "name", "description", "price", "original_price", "discount_percent",
-        "sizes", "stock",
-        "seller_username", "seller_phone", "seller_avatar",
-        "delivery_days", "warranty_days", "return_days",
+        "name", "description", "price", "sizes", "stock",
+        "seller_username", "seller_phone",
         "card_file_id", "card_media_type", "gallery",
     }
     if field not in allowed:

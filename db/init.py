@@ -28,27 +28,21 @@ async def init_db():
             parent_id INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS products (
-            id               SERIAL PRIMARY KEY,
-            category_id      INTEGER,
-            name             TEXT NOT NULL,
-            description      TEXT DEFAULT '',
-            price            REAL NOT NULL,
-            original_price   REAL DEFAULT 0,
-            discount_percent REAL DEFAULT 0,
-            sizes            TEXT DEFAULT '[]',
-            stock            INTEGER DEFAULT 0,
-            seller_username  TEXT DEFAULT '',
-            seller_phone     TEXT DEFAULT '',
-            seller_avatar    TEXT DEFAULT '',
-            delivery_days    TEXT DEFAULT '3–7',
-            warranty_days    INTEGER DEFAULT 14,
-            return_days      INTEGER DEFAULT 14,
-            card_file_id     TEXT DEFAULT '',
-            card_media_type  TEXT DEFAULT '',
-            gallery          TEXT DEFAULT '[]',
-            is_active        INTEGER DEFAULT 1,
-            short_id         TEXT DEFAULT '',
-            created_at       TEXT
+            id              SERIAL PRIMARY KEY,
+            category_id     INTEGER,
+            name            TEXT NOT NULL,
+            description     TEXT DEFAULT '',
+            price           REAL NOT NULL,
+            sizes           TEXT DEFAULT '[]',
+            stock           INTEGER DEFAULT 0,
+            seller_username TEXT DEFAULT '',
+            seller_phone    TEXT DEFAULT '',
+            card_file_id    TEXT DEFAULT '',
+            card_media_type TEXT DEFAULT '',
+            gallery         TEXT DEFAULT '[]',
+            is_active       INTEGER DEFAULT 1,
+            short_id        TEXT DEFAULT '',
+            created_at      TEXT
         );
         CREATE TABLE IF NOT EXISTS orders (
             id          SERIAL PRIMARY KEY,
@@ -244,19 +238,11 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS ref_code TEXT DEFAULT ''",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS short_id TEXT DEFAULT ''",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS original_price REAL DEFAULT 0",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS discount_percent REAL DEFAULT 0",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS seller_avatar TEXT DEFAULT ''",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS delivery_days TEXT DEFAULT '3–7'",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 14",
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS return_days INTEGER DEFAULT 14",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''",
             "ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id INTEGER DEFAULT 0",
             "ALTER TABLE kaspi_payments ADD COLUMN IF NOT EXISTS buyer_note TEXT DEFAULT ''",
             "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS file_id TEXT DEFAULT ''",
             "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS file_type TEXT DEFAULT ''",
-            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS photo_file_id TEXT DEFAULT ''",
-            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT ''",
         ]
         for sql in migrations:
             try:
